@@ -11,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-
 type AuthorController struct {
 	service       *application.AuthorService
 	longPollMutex sync.Mutex
@@ -24,8 +23,6 @@ func NewAuthorController(service *application.AuthorService) *AuthorController {
 		longPollChans: []chan []entities.Author{},
 	}
 }
-
-// Crear un autor
 func (c *AuthorController) CreateAuthor(ctx *gin.Context) {
 	var author entities.Author
 	if err := ctx.ShouldBindJSON(&author); err != nil {
@@ -39,10 +36,25 @@ func (c *AuthorController) CreateAuthor(ctx *gin.Context) {
 		return
 	}
 
-	// Notificar a los clientes sobre el cambio
 	c.NotifyAuthorChanges()
 
 	ctx.JSON(http.StatusCreated, gin.H{"message": "Author Created"})
+}
+
+
+func (c *AuthorController) NotifyAuthorChanges() {
+	c.longPollMutex.Lock()
+	defer c.longPollMutex.Unlock()
+
+	authors, err := c.service.GetAllAuthor()
+	if err != nil {
+		return
+	}
+
+	for _, ch := range c.longPollChans {
+		ch <- authors
+	}
+	c.longPollChans = nil 
 }
 
 // Obtener todos los autores (Short Polling)
@@ -55,17 +67,18 @@ func (c *AuthorController) GetAllAuthors(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, authors)
 }
 
-// Obtener un autor por ID (Short Polling)
+// Obtener un autor por ID
 func (c *AuthorController) GetAuthorByID(ctx *gin.Context) {
 	id := ctx.Param("id")
-	num, err := strconv.Atoi(id)
+	authorID, err := strconv.Atoi(id)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid author ID"})
 		return
 	}
-	author, err := c.service.GetAuthorByID(int16(num))
+
+	author, err := c.service.GetAuthorByID(int16(authorID))
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Author not found"})
 		return
 	}
 	ctx.JSON(http.StatusOK, author)
@@ -76,13 +89,13 @@ func (c *AuthorController) UpdateAuthor(ctx *gin.Context) {
 	id := ctx.Param("id")
 	authorID, err := strconv.Atoi(id)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "ID inválido"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid author ID"})
 		return
 	}
 
 	var author entities.Author
 	if err := ctx.ShouldBindJSON(&author); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Entrada inválida"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 	author.ID = authorID
@@ -93,36 +106,36 @@ func (c *AuthorController) UpdateAuthor(ctx *gin.Context) {
 		return
 	}
 
-	// Notificar a los clientes sobre el cambio
+	// Notificar cambios
 	c.NotifyAuthorChanges()
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "Autor actualizado"})
+	ctx.JSON(http.StatusOK, gin.H{"message": "Author updated"})
 }
 
 // Eliminar un autor
 func (c *AuthorController) DeleteAuthor(ctx *gin.Context) {
 	id := ctx.Param("id")
-	num, err := strconv.Atoi(id)
+	authorID, err := strconv.Atoi(id)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid author ID"})
 		return
 	}
 
-	err = c.service.DeleteAuthor(int16(num))
+	err = c.service.DeleteAuthor(int16(authorID))
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Notificar a los clientes sobre el cambio
+	// Notificar cambios
 	c.NotifyAuthorChanges()
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "Author Deleted"})
+	ctx.JSON(http.StatusOK, gin.H{"message": "Author deleted"})
 }
 
-// --- SHORT POLLING ---
 
-// Short Polling para obtener la lista de autores
+
+// Obtener lista de autores (Short Polling)
 func (c *AuthorController) ShortPollingAuthors(ctx *gin.Context) {
 	authors, err := c.service.GetAllAuthor()
 	if err != nil {
@@ -132,7 +145,7 @@ func (c *AuthorController) ShortPollingAuthors(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, authors)
 }
 
-// Short Polling para verificar si existe un autor por ID
+// Verificar si existe un autor por ID (Short Polling)
 func (c *AuthorController) ShortPollingAuthorByID(ctx *gin.Context) {
 	id := ctx.Param("id")
 	authorID, err := strconv.Atoi(id)
@@ -150,7 +163,6 @@ func (c *AuthorController) ShortPollingAuthorByID(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, author)
 }
 
-// --- LONG POLLING ---
 
 // Long Polling para obtener autores cuando haya cambios
 func (c *AuthorController) LongPollingAuthors(ctx *gin.Context) {
@@ -164,24 +176,9 @@ func (c *AuthorController) LongPollingAuthors(ctx *gin.Context) {
 	case authors := <-ch:
 		ctx.JSON(http.StatusOK, authors)
 	case <-time.After(30 * time.Second): // Expira si no hay cambios en 30s
-		ctx.JSON(http.StatusNoContent, nil)
+		
+		ctx.JSON(http.StatusOK, gin.H{"message": "No hay cambios detectados después de 30 segundos"})
 	}
-}
-
-// Notificar cambios a los clientes que están esperando con Long Polling
-func (c *AuthorController) NotifyAuthorChanges() {
-	c.longPollMutex.Lock()
-	defer c.longPollMutex.Unlock()
-
-	authors, err := c.service.GetAllAuthor()
-	if err != nil {
-		return
-	}
-
-	for _, ch := range c.longPollChans {
-		ch <- authors
-	}
-	c.longPollChans = []chan []entities.Author{} // Limpiar canales
 }
 
 // Long Polling para obtener información de un autor específico cuando haya cambios
@@ -189,7 +186,7 @@ func (c *AuthorController) LongPollingAuthorByID(ctx *gin.Context) {
 	id := ctx.Param("id")
 	authorID, err := strconv.Atoi(id)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid author ID"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "ID de autor inválido"})
 		return
 	}
 
@@ -210,6 +207,7 @@ func (c *AuthorController) LongPollingAuthorByID(ctx *gin.Context) {
 	case author := <-ch:
 		ctx.JSON(http.StatusOK, author)
 	case <-time.After(30 * time.Second): // Expira si no hay cambios en 30s
-		ctx.JSON(http.StatusNoContent, nil)
+		
+		ctx.JSON(http.StatusOK, gin.H{"message": "No hay cambios detectados después de 30 segundos"})
 	}
 }

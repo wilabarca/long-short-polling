@@ -6,26 +6,26 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterAuthorRoutes(router *gin.Engine, AuthorController *controller.AuthorController) {
-	AuthorGroup := router.Group("/Author")
+func RegisterAuthorRoutes(router *gin.Engine, authorController *controller.AuthorController) {
+	authorGroup := router.Group("/author")
 	{
 		// Rutas para operaciones CRUD
-		AuthorGroup.GET("/", AuthorController.GetAllAuthors)
-		AuthorGroup.GET("/:id", AuthorController.GetAuthorByID)
-		AuthorGroup.POST("/", AuthorController.CreateAuthor)
-		AuthorGroup.PUT("/:id", AuthorController.UpdateAuthor)
-		AuthorGroup.DELETE("/:id", AuthorController.DeleteAuthor)
+		authorGroup.GET("/", authorController.GetAllAuthors)
+		authorGroup.GET("/:id", authorController.GetAuthorByID)
+		authorGroup.POST("/", authorController.CreateAuthor)
+		authorGroup.PUT("/:id", authorController.UpdateAuthor)
+		authorGroup.DELETE("/:id", authorController.DeleteAuthor)
 
 		// Short Polling para obtener la lista de autores
-		AuthorGroup.GET("/shortPolling", AuthorController.ShortPollingAuthors)
+		authorGroup.GET("/shortPolling", authorController.ShortPollingAuthors)
 
 		// Short Polling para verificar un autor por ID
-		AuthorGroup.GET("/shortPolling/:id", AuthorController.ShortPollingAuthorByID)
+		authorGroup.GET("/shortPolling/:id", authorController.ShortPollingAuthorByID)
 
 		// Long Polling para obtener la lista de autores cuando haya cambios
-		AuthorGroup.GET("/longPolling", AuthorController.LongPollingAuthors)
+		authorGroup.GET("/longPolling", authorController.LongPollingAuthors)
 
 		// Long Polling para obtener un autor específico cuando haya cambios
-		AuthorGroup.GET("/longPolling/:id", AuthorController.LongPollingAuthorByID)
+		authorGroup.GET("/longPolling/:id", authorController.LongPollingAuthorByID)
 	}
 }
